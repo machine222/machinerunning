@@ -40,25 +40,87 @@ export default function SearchResults() {
   const [searchData, setSearchData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  /**
-   * 검색 데이터를 가져오기 위한 효과 훅
-   *
-   * 목적:
-   * 컴포넌트가 마운트되거나 쿼리가 변경될 때 현재 검색 쿼리에 대한 데이터를 로드합니다.
-   *
-   * 구현 참고사항:
-   * 현재는 데모 목적으로 모의 데이터를 사용합니다.
-   * 실제 환경에서는 검색 쿼리를 기반으로 실제 데이터를 가져오는 API 호출을 수행합니다.
+    /**
+   * 검색 데이터 가져오기 로직
+   * 
+   * 이 부분은 기존의 모의 데이터(mock-data) 대신 실제 API 호출을 사용하도록 수정합니다.
+   * useEffect 훅은 컴포넌트가 마운트되거나 query가 변경될 때 실행됩니다.
    */
   useEffect(() => {
-    // 실제 앱에서는 API 호출이 될 것입니다
-    // 데모 목적으로 모의 데이터를 생성합니다
-    setIsLoading(true)
-    setTimeout(() => {
-      setSearchData(generateMockData(query))
-      setIsLoading(false)
-    }, 1000)
-  }, [query])
+    // 비동기 데이터 가져오기 함수 정의
+    const fetchSearchData = async () => {
+      // 로딩 상태 시작
+      setIsLoading(true);
+      
+      try {
+        // 1. 기본 검색 데이터 가져오기 (월간 검색량, 상품 수, 카테고리 정보)
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        
+        // 오류 처리
+        if (!response.ok) throw new Error('검색 데이터를 가져오는데 실패했습니다');
+        
+        // JSON 형식으로 응답 파싱
+        const data = await response.json();
+        
+        // 2. CTR 데이터 가져오기 (기기별, 성별, 연령대별, 요일별 CTR)
+        const ctrResponse = await fetch(`/api/search/ctr?q=${encodeURIComponent(query)}`);
+        
+        // 오류 처리
+        if (!ctrResponse.ok) throw new Error('CTR 데이터를 가져오는데 실패했습니다');
+        
+        // JSON 형식으로 응답 파싱
+        const ctrData = await ctrResponse.json();
+        
+        // 3. 트렌드 데이터 가져오기 (시간별 검색량)
+        const trendData = await fetchSearchTrends();
+        
+        // 4. 모든 데이터 통합하여 상태 업데이트
+        setSearchData({
+          ...data,
+          ctrByDevice: ctrData.byDevice,
+          ctrByGender: ctrData.byGender,
+          ctrByAge: ctrData.byAge,
+          ctrByWeekday: ctrData.byWeekday,
+          searchTrends: trendData
+        });
+      } catch (error) {
+        // 오류 로깅
+        console.error('데이터 가져오기 오류:', error);
+        
+        // 여기에 오류 상태 처리 로직 추가 가능
+        // 예: setErrorState(true);
+      } finally {
+        // 로딩 상태 종료 (성공/실패 여부와 관계없이)
+        setIsLoading(false);
+      }
+    };
+    
+    /**
+     * 트렌드 데이터 가져오기 함수
+     * 기본적으로 최근 1년간의 주별 데이터를 가져옵니다
+     */
+    const fetchSearchTrends = async () => {
+      // 현재 날짜와 1년 전 날짜 계산
+      const now = new Date();
+      const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      
+      // 트렌드 API 호출
+      const response = await fetch(
+        `/api/search/trends?q=${encodeURIComponent(query)}&timeFrame=weekly&dateFrom=${oneYearAgo.toISOString().split('T')[0]}&dateTo=${now.toISOString().split('T')[0]}`
+      );
+      
+      // 오류 처리
+      if (!response.ok) throw new Error('트렌드 데이터를 가져오는데 실패했습니다');
+      
+      // JSON 형식으로 응답 파싱하여 반환
+      return await response.json();
+    };
+    
+    // 함수 실행
+    fetchSearchData();
+    
+    // 의존성 배열: query가 변경될 때마다 이 로직 실행
+  }, [query]);
 
   // 로딩 상태 표시
   if (isLoading) {
